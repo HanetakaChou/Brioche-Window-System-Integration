@@ -1,0 +1,34 @@
+#
+# Copyright (C) YuqiaoZhang(HanetakaChou)
+# 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Lesser General Public License as published
+# by the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Lesser General Public License for more details.
+# 
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+_brx_wsi_init_connection
+_brx_wsi_uninit_connection
+_brx_wsi_get_connection
+_brx_wsi_init_main_window
+_brx_wsi_uninit_main_window
+_brx_wsi_get_main_window
+_brx_wsi_get_main_window_size
+_brx_wsi_get_main_window_scale
+_brx_wsi_show_main_window
+_brx_wsi_set_main_window_size
+_brx_wsi_create_image_window
+_brx_wsi_destroy_image_window
+_brx_wsi_present_image_window
+_brx_wsi_run_main_loop
+_brx_wsi_get_open_file_name
+_brx_wsi_tcc
+_ImGui_ImplOSX_Platform_SetImeData
