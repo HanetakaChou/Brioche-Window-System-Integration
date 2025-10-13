@@ -1,0 +1,4 @@
+[submodule "thirdparty/Qt"]
+	path = thirdparty/Qt
+	url = git@github.com:BriochePuppet/Qt.git
+	branch = master
