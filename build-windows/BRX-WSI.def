@@ -1,0 +1,17 @@
+EXPORTS
+	brx_wsi_init_connection
+	brx_wsi_uninit_connection
+	brx_wsi_get_connection
+	brx_wsi_init_main_window
+	brx_wsi_uninit_main_window
+	brx_wsi_get_main_window
+	brx_wsi_get_main_window_size
+	brx_wsi_get_main_window_scale
+	brx_wsi_show_main_window
+	brx_wsi_set_main_window_size
+	brx_wsi_create_image_window
+	brx_wsi_destroy_image_window
+	brx_wsi_present_image_window
+	brx_wsi_run_main_loop
+	brx_wsi_get_open_file_name
+	brx_wsi_tcc
