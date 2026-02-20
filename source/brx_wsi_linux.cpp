@@ -41,6 +41,7 @@ static int internal_xcb_button_to_imgui_button(xcb_button_t xcb_button);
 constexpr uint8_t const k_depth = 32U;
 
 static xcb_connection_t *s_connection = NULL;
+static uint32_t s_maximum_request_length = 0U;
 static xcb_screen_t *s_screen = NULL;
 static xcb_visualid_t s_visual_id = XCB_NONE;
 static xcb_colormap_t s_colormap = XCB_NONE;
@@ -83,6 +84,13 @@ extern "C" void brx_wsi_init_connection()
     }
     assert(NULL != s_connection);
     assert(NULL != s_screen);
+
+    // enable big requests
+    xcb_prefetch_maximum_request_length(s_connection);
+
+    assert(0U == s_maximum_request_length);
+    s_maximum_request_length = xcb_get_maximum_request_length(s_connection);
+    assert(s_maximum_request_length > 0U);
 
     {
         for (xcb_depth_iterator_t depth_iterator = xcb_screen_allowed_depths_iterator(s_screen); depth_iterator.rem > 0; xcb_depth_next(&depth_iterator))
@@ -454,7 +462,6 @@ struct internal_brx_wsi_image_window
 {
     xcb_window_t window;
     xcb_gcontext_t graphics_context;
-    xcb_pixmap_t backbuffer_pixmap;
     int32_t window_width;
     int32_t window_height;
 };
@@ -464,7 +471,7 @@ extern "C" void *brx_wsi_create_image_window(char const *window_name)
     void *unwrapped_window_base = mcrt_malloc(sizeof(internal_brx_wsi_image_window), alignof(internal_brx_wsi_image_window));
     assert(NULL != unwrapped_window_base);
 
-    internal_brx_wsi_image_window *unwrapped_window = new (unwrapped_window_base) internal_brx_wsi_image_window{XCB_NONE, XCB_NONE, XCB_NONE, 0, 0};
+    internal_brx_wsi_image_window *unwrapped_window = new (unwrapped_window_base) internal_brx_wsi_image_window{XCB_NONE, XCB_NONE, 0, 0};
     assert(NULL != unwrapped_window);
 
     constexpr int32_t const k_window_width = 256;
@@ -515,17 +522,6 @@ extern "C" void *brx_wsi_create_image_window(char const *window_name)
         assert(NULL == error_create_graphics_context);
     }
 
-    {
-        assert(XCB_NONE == unwrapped_window->backbuffer_pixmap);
-        unwrapped_window->backbuffer_pixmap = xcb_generate_id(s_connection);
-        assert(XCB_NONE != unwrapped_window->backbuffer_pixmap);
-
-        xcb_void_cookie_t cookie_create_pixmap = xcb_create_pixmap_checked(s_connection, k_depth, unwrapped_window->backbuffer_pixmap, unwrapped_window->window, k_window_width, k_window_height);
-
-        xcb_generic_error_t *error_create_pixmap = xcb_request_check(s_connection, cookie_create_pixmap);
-        assert(NULL == error_create_pixmap);
-    }
-
     assert(0 == unwrapped_window->window_width);
     unwrapped_window->window_width = k_window_width;
     assert(0 != unwrapped_window->window_width);
@@ -548,15 +544,6 @@ extern "C" void brx_wsi_destroy_image_window(void *wrapped_window)
 {
     internal_brx_wsi_image_window *unwrapped_window = static_cast<internal_brx_wsi_image_window *>(wrapped_window);
     assert(NULL != unwrapped_window);
-
-    {
-        assert(XCB_NONE != unwrapped_window->backbuffer_pixmap);
-        xcb_void_cookie_t cookie_free_backbuffer_pixmap = xcb_free_pixmap_checked(s_connection, unwrapped_window->backbuffer_pixmap);
-        unwrapped_window->backbuffer_pixmap = XCB_NONE;
-
-        xcb_generic_error_t *error_free_backbuffer_pixmap = xcb_request_check(s_connection, cookie_free_backbuffer_pixmap);
-        assert(NULL == error_free_backbuffer_pixmap);
-    }
 
     {
         assert(XCB_NONE != unwrapped_window->graphics_context);
@@ -592,36 +579,13 @@ extern "C" void brx_wsi_present_image_window(void *wrapped_window, void const *i
     {
         internal_brx_wsi_set_window_size(s_connection, unwrapped_window->window, image_width, image_height);
 
-        {
-            assert(XCB_NONE != unwrapped_window->backbuffer_pixmap);
-            xcb_void_cookie_t cookie_free_pixmap = xcb_free_pixmap_checked(s_connection, unwrapped_window->backbuffer_pixmap);
-            unwrapped_window->backbuffer_pixmap = XCB_NONE;
-
-            xcb_generic_error_t *error_free_pixmap = xcb_request_check(s_connection, cookie_free_pixmap);
-            assert(NULL == error_free_pixmap);
-        }
-
-        {
-            assert(XCB_NONE == unwrapped_window->backbuffer_pixmap);
-            unwrapped_window->backbuffer_pixmap = xcb_generate_id(s_connection);
-            assert(XCB_NONE != unwrapped_window->backbuffer_pixmap);
-
-            xcb_void_cookie_t cookie_create_pixmap = xcb_create_pixmap_checked(s_connection, k_depth, unwrapped_window->backbuffer_pixmap, unwrapped_window->window, image_width, image_height);
-
-            xcb_generic_error_t *error_create_pixmap = xcb_request_check(s_connection, cookie_create_pixmap);
-            assert(NULL == error_create_pixmap);
-        }
-
         unwrapped_window->window_width = image_width;
         unwrapped_window->window_height = image_height;
     }
 
-    // write "texture" into "back buffer"
-    xcb_put_image(s_connection, XCB_IMAGE_FORMAT_Z_PIXMAP, unwrapped_window->backbuffer_pixmap, unwrapped_window->graphics_context, image_width, image_height, 0, 0, 0, k_depth, sizeof(uint32_t) * image_width * image_height, static_cast<uint8_t const *>(image_buffer));
-
-    // copy from "back-buffer" into "front buffer"
-    // xcb_present_pixmap(s_connection, unwrapped_window->window, unwrapped_window->backbuffer_pixmap, 0, XCB_NONE, XCB_NONE, 0, 0, XCB_NONE, XCB_NONE, XCB_NONE, XCB_PRESENT_OPTION_NONE, 0, 0, 0, 0, NULL);
-    xcb_copy_area(s_connection, unwrapped_window->backbuffer_pixmap, unwrapped_window->window, unwrapped_window->graphics_context, 0, 0, 0, 0, image_width, image_height);
+    // write "texture" into "window" directly
+    assert((4U * s_maximum_request_length) > (sizeof(uint32_t) * image_width * image_height));
+    xcb_put_image(s_connection, XCB_IMAGE_FORMAT_Z_PIXMAP, unwrapped_window->window, unwrapped_window->graphics_context, image_width, image_height, 0, 0, 0, k_depth, sizeof(uint32_t) * image_width * image_height, static_cast<uint8_t const *>(image_buffer));
 
     int result_flush = xcb_flush(s_connection);
     assert(result_flush > 0);

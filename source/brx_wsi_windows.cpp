@@ -32,16 +32,6 @@
 #include "../../libiconv/include/iconv.h"
 #include "../build-windows/resource.h"
 
-struct internal_brx_window
-{
-    HWND window;
-    HDC device_context;
-    HDC memory_device_context;
-    HBITMAP bitmap;
-    int32_t window_width;
-    int32_t window_height;
-};
-
 extern "C" IMAGE_DOS_HEADER __ImageBase;
 
 static ATOM s_main_window_class = 0U;
@@ -430,8 +420,6 @@ struct internal_brx_wsi_image_window
 {
     HWND window;
     HDC device_context;
-    HDC memory_device_context;
-    HBITMAP bitmap;
     int32_t window_width;
     int32_t window_height;
 };
@@ -446,7 +434,7 @@ extern "C" void *brx_wsi_create_image_window(char const *window_name)
     void *unwrapped_window_base = mcrt_malloc(sizeof(internal_brx_wsi_image_window), alignof(internal_brx_wsi_image_window));
     assert(NULL != unwrapped_window_base);
 
-    internal_brx_wsi_image_window *unwrapped_window = new (unwrapped_window_base) internal_brx_wsi_image_window{NULL, NULL, NULL, NULL, 0, 0};
+    internal_brx_wsi_image_window *unwrapped_window = new (unwrapped_window_base) internal_brx_wsi_image_window{NULL, NULL, 0, 0};
     assert(NULL != unwrapped_window);
 
     constexpr int32_t const k_window_width = 256;
@@ -518,14 +506,6 @@ extern "C" void *brx_wsi_create_image_window(char const *window_name)
     unwrapped_window->device_context = GetDC(unwrapped_window->window);
     assert(NULL != unwrapped_window->device_context);
 
-    assert(NULL == unwrapped_window->memory_device_context);
-    unwrapped_window->memory_device_context = CreateCompatibleDC(unwrapped_window->device_context);
-    assert(NULL != unwrapped_window->memory_device_context);
-
-    assert(NULL == unwrapped_window->bitmap);
-    unwrapped_window->bitmap = CreateCompatibleBitmap(unwrapped_window->device_context, k_window_width, k_window_height);
-    assert(NULL != unwrapped_window->bitmap);
-
     assert(0 == unwrapped_window->window_width);
     unwrapped_window->window_width = k_window_width;
     assert(0 != unwrapped_window->window_width);
@@ -549,16 +529,6 @@ extern "C" void brx_wsi_destroy_image_window(void *wrapped_window)
     internal_brx_wsi_image_window *unwrapped_window = static_cast<internal_brx_wsi_image_window *>(wrapped_window);
     assert(NULL != unwrapped_window);
 
-    assert(NULL != unwrapped_window->bitmap);
-    BOOL result_delete_object = DeleteObject(unwrapped_window->bitmap);
-    assert(FALSE != result_delete_object);
-    unwrapped_window->bitmap = NULL;
-
-    assert(NULL != unwrapped_window->memory_device_context);
-    BOOL result_delete_dc = DeleteDC(unwrapped_window->memory_device_context);
-    assert(FALSE != result_delete_dc);
-    unwrapped_window->memory_device_context = NULL;
-
     assert(NULL != unwrapped_window->device_context);
     BOOL result_release_dc = ReleaseDC(unwrapped_window->window, unwrapped_window->device_context);
     assert(FALSE != result_release_dc);
@@ -580,7 +550,6 @@ extern "C" void brx_wsi_present_image_window(void *wrapped_window, void const *i
 
     assert(NULL != unwrapped_window->window);
     assert(NULL != unwrapped_window->device_context);
-    assert(NULL != unwrapped_window->memory_device_context);
 
     if ((image_width != unwrapped_window->window_width) || (image_height != unwrapped_window->window_height))
     {
@@ -597,21 +566,12 @@ extern "C" void brx_wsi_present_image_window(void *wrapped_window, void const *i
             assert(FALSE != res_set_window_pos);
         }
 
-        assert(NULL != unwrapped_window->bitmap);
-        BOOL result_delete_object = DeleteObject(unwrapped_window->bitmap);
-        assert(FALSE != result_delete_object);
-        unwrapped_window->bitmap = NULL;
-
-        assert(NULL == unwrapped_window->bitmap);
-        unwrapped_window->bitmap = CreateCompatibleBitmap(unwrapped_window->device_context, image_width, image_height);
-        assert(NULL != unwrapped_window->bitmap);
-
         unwrapped_window->window_width = image_width;
         unwrapped_window->window_height = image_height;
     }
 
     {
-        // write "texture" into "back buffer"
+        // write "texture" into "window" directly
         BITMAPINFO bmi;
         ZeroMemory(&bmi, sizeof(bmi));
         bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -621,20 +581,8 @@ extern "C" void brx_wsi_present_image_window(void *wrapped_window, void const *i
         bmi.bmiHeader.biBitCount = 32;
         bmi.bmiHeader.biCompression = BI_RGB;
 
-        int result_set_dib_bits = SetDIBits(unwrapped_window->device_context, unwrapped_window->bitmap, 0, image_height, image_buffer, &bmi, DIB_RGB_COLORS);
+        int result_set_dib_bits = SetDIBitsToDevice(unwrapped_window->device_context, 0, 0, image_width, image_height, 0, 0, 0, image_height, image_buffer, &bmi, DIB_RGB_COLORS);
         assert(result_set_dib_bits > 0);
-    }
-
-    {
-        HBITMAP old_bitmap = reinterpret_cast<HBITMAP>(SelectObject(unwrapped_window->memory_device_context, unwrapped_window->bitmap));
-        assert(NULL != old_bitmap && HGDI_ERROR != old_bitmap);
-
-        // copy from "back-buffer" into "front buffer"
-        int result_bit_blt = BitBlt(unwrapped_window->device_context, 0, 0, image_width, image_height, unwrapped_window->memory_device_context, 0, 0, SRCCOPY);
-        assert(0 != result_bit_blt);
-
-        HGDIOBJ new_bitmap = reinterpret_cast<HBITMAP>(SelectObject(unwrapped_window->memory_device_context, old_bitmap));
-        assert(new_bitmap == unwrapped_window->bitmap);
     }
 }
 
